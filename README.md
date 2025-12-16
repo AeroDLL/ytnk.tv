@@ -63,12 +63,12 @@ Bu proje tamamen **eğitim ve kişisel kullanım amaçlı** geliştirilmiştir.
 
 ## 👨‍💻 Geliştirici
 
-**[Senin Adın veya Kullanıcı Adın]**
+**[Emirhan Bıçakcı & AeroDLL]**
 
 *Bu projeyi geliştirmemdeki motivasyon, tekrarlayan görevleri otomatize ederek zaman verimliliği sağlamaktır.*
 
 ---
 
 <div align="center">
-  <sub>Made with ❤️ and ☕ by [Kullanıcı Adın]</sub>
+  <sub>Made with ❤️ and ☕ by [AeroDLL]</sub>
 </div>
