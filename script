@@ -1,0 +1,220 @@
+// ==UserScript==
+// @name         YTNK Arkaplan Video (Panel V31 - Seçilmiş Kişi)
+// @namespace    https://github.com/Emirhan/YTNK-Bot
+// @version      1.0
+// @description  Sadece (*) ile işaretlenmiş zorunlu dersleri hedefler ve izler.
+// @author       Emirhan
+// @copyright    2025, Emirhan
+// @license      MIT
+// @match        *://*.ytnk.tv/*
+// @grant        GM_addStyle
+// @run-at       document-start
+// ==/UserScript==
+
+/*
+ * ==============================================================================
+ * Telif Hakkı (c) 2025 Emirhan
+ *
+ * Bu yazılım, YTNK TV eğitim platformunda kullanıcı deneyimini iyileştirmek
+ * amacıyla eğitim ve kişisel kullanım için geliştirilmiştir.
+ *
+ * İzinsiz kopyalanması, dağıtılması veya ticari amaçla kullanılması yasaktır.
+ * ==============================================================================
+ */
+
+(function () {
+    'use strict';
+
+    // --- DİJİTAL İMZA (Konsola Kimlik Basar) ---
+    console.log(`%c 🛡️ YTNK Asistanı V31 \n %c Geliştirici: Emirhan | © 2025 `,
+        'background: #FF6F00; color: #fff; font-size: 16px; padding: 10px; border-radius: 5px; font-weight: bold;',
+        'background: #263238; color: #eceff1; font-size: 12px; padding: 5px; border-radius: 5px;');
+
+    const PANEL_ID = 'ytnk-v31-starhunter';
+    let isAutoMuted = true;
+
+    // --- 1. ARKA PLAN VE ODAK KORUMASI ---
+    function preventFocusLoss() {
+        try {
+            Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+            Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+        } catch (e) {}
+
+        ['blur', 'visibilitychange', 'webkitvisibilitychange', 'mozvisibilitychange', 'msvisibilitychange'].forEach(evt => {
+            window.addEventListener(evt, e => { e.stopImmediatePropagation(); }, true);
+        });
+    }
+
+    function sendHeartbeat() {
+        document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10 + Math.random() * 10, clientY: 10 + Math.random() * 10 }));
+        const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        updateStatus('sinyal', time);
+    }
+
+    // --- 2. VİDEO YÖNETİMİ ---
+    function manageVideo() {
+        const v = document.querySelector('video');
+        if (!v) {
+            updateStatus('durum', 'Video aranıyor...');
+            updateStatus('tahmin', '-');
+            return;
+        }
+
+        if (v.hasAttribute('disablePictureInPicture')) v.removeAttribute('disablePictureInPicture');
+        if (isAutoMuted && !v.muted) v.muted = true;
+        if (v.playbackRate !== 1.0) v.playbackRate = 1.0; // Hız 1.0x (Güvenlik için şart)
+
+        if (v.paused && !v.ended && v.readyState > 2) {
+            v.play().catch(() => {});
+            updateStatus('durum', 'Tekrar başlatıldı');
+        } else if (!v.paused && v.duration) {
+            updateStatus('durum', 'İzleniyor (1.0x)');
+            const remaining = (v.duration - v.currentTime);
+            const finishTime = new Date(Date.now() + remaining * 1000);
+            updateStatus('tahmin', finishTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }));
+        } else if (v.ended) {
+            updateStatus('durum', 'Bitti, Zorunlu (*) aranıyor...');
+            updateStatus('tahmin', 'Tamamlandı');
+        }
+    }
+
+    // --- 3. YILDIZ AVCI SİSTEMİ (Zorunlu Ders Bulucu) ---
+    function findAndClickMandatory() {
+        // Önce sayfanın sağındaki veya altındaki ders listesini tarayalım.
+        // Genellikle 'a' etiketleri veya 'li' elemanlarıdır.
+        const links = document.querySelectorAll('a, .list-group-item, .lesson-item, li');
+        let foundActive = false;
+        let clicked = false;
+
+        for (let i = 0; i < links.length; i++) {
+            const el = links[i];
+
+            // Görünmez elementleri atla
+            if (!el.offsetParent) continue;
+
+            const text = (el.innerText || el.textContent || "").trim();
+            const classes = (el.className || "").toLowerCase();
+
+            // Önce şu anki aktif dersi bulmaya çalışalım (referans noktası)
+            if (classes.includes('active') || classes.includes('current') || classes.includes('selected')) {
+                foundActive = true;
+                continue; // Aktif olanı geç, sonrakilere bakacağız
+            }
+
+            // Eğer aktif dersi çoktan geçtiysek (veya bulamadıysak) ve bu linkte (*) varsa
+            if ((foundActive || !document.querySelector('.active')) && text.includes('*')) {
+                // Bu bir link mi?
+                if (el.tagName === 'A') {
+                    console.log(`%c [YTNK V31] Zorunlu Ders Bulundu: ${text}`, 'color: green; font-weight: bold;');
+                    el.click();
+                    updateStatus('son', 'Zorunlu: ' + text.slice(0, 10) + '...');
+                    clicked = true;
+                    break;
+                } else {
+                    // Belki link bunun içindedir
+                    const childLink = el.querySelector('a');
+                    if (childLink) {
+                        console.log(`%c [YTNK V31] Zorunlu Ders (Child) Bulundu: ${text}`, 'color: green; font-weight: bold;');
+                        childLink.click();
+                        updateStatus('son', 'Zorunlu: ' + text.slice(0, 10) + '...');
+                        clicked = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return clicked;
+    }
+
+    // --- 4. GENEL OTOMASYON ---
+    function autoClick() {
+        // Hata pencerelerini kapat
+        const closers = document.querySelectorAll('.modal .close, .swal-button--cancel, .toast-close-button');
+        closers.forEach(el => { if(el.offsetParent) el.click(); });
+
+        const v = document.querySelector('video');
+        // Sadece video bittiyse geçiş yap (izlerken atlamasın)
+        if (v && !v.ended) return;
+
+        // 1. ADIM: ZORUNLU (*) DERS ARA
+        if (findAndClickMandatory()) return;
+
+        // 2. ADIM: EĞER ZORUNLU BULAMAZSAN STANDART BUTONLARA BAK
+        const candidates = document.querySelectorAll('button, a.btn, input[type="button"], .vjs-big-play-button');
+        for (let i = 0; i < candidates.length; i++) {
+            const el = candidates[i];
+            if (!el.offsetParent || el.disabled) continue;
+
+            let text = (el.innerText || el.textContent || "").toLowerCase().trim();
+            if (el.classList.contains('vjs-big-play-button')) text = "play";
+
+            // Yasaklı kelimeler
+            if (text.includes('not') || text.includes('yorum')) continue;
+
+            // Standart hedefler (Yıldız yoksa mecburen bunlara tıkla)
+            const targets = ['sonraki', 'devam', 'bitir', 'tamam', 'evet', 'onayla', 'play'];
+            if (targets.some(t => text.includes(t))) {
+                console.log('[YTNK V31] Standart Geçiş:', text);
+                el.click();
+                updateStatus('son', 'Tık: ' + text.slice(0, 15));
+                return;
+            }
+        }
+    }
+
+    // --- 5. PANEL ---
+    function updateStatus(id, txt) { const el = document.getElementById('yt-'+id); if(el) el.textContent = txt; }
+    function togglePiP() {
+        const v = document.querySelector('video');
+        if(v) (document.pictureInPictureElement ? document.exitPictureInPicture() : v.requestPictureInPicture()).catch(()=>{});
+    }
+    function toggleMute() {
+        isAutoMuted = !isAutoMuted;
+        const v = document.querySelector('video'); if(v) v.muted = isAutoMuted;
+        document.getElementById('yt-mute-btn').textContent = isAutoMuted ? '🔇 Ses' : '🔊 Ses';
+    }
+
+    function createPanel() {
+        if (document.getElementById(PANEL_ID)) return;
+        const CSS = `
+            #${PANEL_ID} {
+                position: fixed !important; bottom: 20px !important; right: 20px !important;
+                width: 200px !important; background: #263238 !important; color: #eceff1 !important;
+                z-index: 2147483647 !important; border-radius: 6px !important; border: 1px solid #37474f !important;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.5) !important; font-family: sans-serif !important; font-size: 11px !important;
+            }
+            #${PANEL_ID} .ph { padding: 8px !important; background: #FF6F00 !important; color: #fff !important; font-weight: bold !important; display:flex; justify-content:space-between; }
+            #${PANEL_ID} .pc { padding: 10px !important; }
+            #${PANEL_ID} .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+            #${PANEL_ID} button { flex:1; padding:5px !important; margin:2px !important; background:#37474f !important; color:#fff !important; border:none !important; cursor:pointer !important; }
+        `;
+        if (typeof GM_addStyle !== 'undefined') GM_addStyle(CSS);
+        else { const s = document.createElement('style'); s.textContent = CSS; (document.head||document.documentElement).appendChild(s); }
+
+        const p = document.createElement('div');
+        p.id = PANEL_ID;
+        p.innerHTML = `
+            <div class="ph"><span>YTNK V1.0 (⭐)</span><span onclick="this.closest('#${PANEL_ID}').remove()" style="cursor:pointer;">x</span></div>
+            <div class="pc">
+                <div class="row"><span>Durum:</span> <span id="yt-durum" style="color:#FFCA28">Hazır</span></div>
+                <div class="row"><span>Bitiş:</span> <span id="yt-tahmin">-</span></div>
+                <div class="row" style="color:#90a4ae"><span>İşlem:</span> <span id="yt-son">-</span></div>
+                <div style="display:flex">
+                    <button id="yt-pip-btn">📺 PiP</button>
+                    <button id="yt-mute-btn">🔇 Ses</button>
+                </div>
+                <div style="margin-top:5px; text-align:center; font-size:9px; color:#546e7a;">© 2025 Emirhan</div>
+            </div>
+        `;
+        (document.body||document.documentElement).appendChild(p);
+        document.getElementById('yt-pip-btn').onclick = togglePiP;
+        document.getElementById('yt-mute-btn').onclick = toggleMute;
+    }
+
+    preventFocusLoss();
+    setInterval(() => { if (document.body) createPanel(); }, 3000);
+    setInterval(sendHeartbeat, 20000);
+    setInterval(manageVideo, 2000);
+    setInterval(autoClick, 3000);
+
+})();
